@@ -173,7 +173,7 @@ def _generate_qasm(gate_list, n_qubits, gate_options={1: "x", 2: "cx"}):
 
     for _, gate in gate_list:
         if len(gate) == 2:
-            qasm_str += f"{gate_options[2]} q[{gate[0]}] q[{gate[1]}];\n"
+            qasm_str += f"{gate_options[2]} q[{gate[0]}], q[{gate[1]}];\n"
         else:
             qasm_str += f"{gate_options[1]} q[{gate[0]}];\n"
 
