@@ -230,7 +230,7 @@ def queko_circuit(graph, depth, density_vec, gate_options={1: "x", 2: "cx"}, lat
     max_2q_gates = int(np.ceil(density_vec[1] * n_qubits * depth / 2))
 
     # Determine whether the provided depth and density produces an admissible
-    # circuit max_1q_gates + max_2q_gates cannot be less than circuit depth,
+    # circuit. max_1q_gates + max_2q_gates cannot be less than circuit depth,
     # otherwise not enough gates to produce something with depth T
     if max_1q_gates + max_2q_gates < depth:
         raise ValueError(
