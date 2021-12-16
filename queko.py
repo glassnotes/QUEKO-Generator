@@ -167,7 +167,6 @@ def _generate_qasm(gate_list, n_qubits, gate_options={1: "x", 2: "cx"}):
 
     Returns:
         str: QASM output for the circuit.
-
     """
 
     qasm_str = "OPENQASM 2.0;\n"
