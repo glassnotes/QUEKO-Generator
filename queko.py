@@ -1,5 +1,6 @@
 """Generate 'quantum mapping examples with known optimal' (QUEKO) circuits."""
 import numpy as np
+import networkx as nx
 
 
 def _backbone_construction(node_list, edge_list, depth, max_2q_gates):
@@ -43,7 +44,7 @@ def _backbone_construction(node_list, edge_list, depth, max_2q_gates):
         # To create a dependency chain, we need there to be overlap between the
         # current gate and the previous one. If there is no overlap, pick again
         if timestep > 0:
-            while not any([q in gates[timestep - 1] for q in which_qubits]):
+            while not any(q in gates[timestep - 1] for q in which_qubits):
                 if gate_type == 2 and count_2q_gates < max_2q_gates:
                     which_qubits = edge_list[np.random.choice(edge_choices)]
                 else:
@@ -111,7 +112,7 @@ def _sprinkling_phase(
                 which_qubits = (np.random.choice(node_list),)
 
             gates_at_t = [gate for gate in gate_list if gate[0] == timestep]
-            overlap = any([any([q in gate[1] for q in which_qubits]) for gate in gates_at_t])
+            overlap = any(any(q in gate[1] for q in which_qubits) for gate in gates_at_t)
 
         # Update the gate counts and the list
         if gate_type == 2:
@@ -160,11 +161,13 @@ def _generate_qasm(gate_list, n_qubits, gate_options={1: "x", 2: "cx"}):
         gate_list (list[(int, (int, int))]): The list of gates representing the
             current circuit.
         n_qubits (int): The number of nodes in the graph.
-        gate_options (Dict[(int, str)]): Which single- and two-qubit gates to use in the
-            output QASM file. Defaults to "x" for single-qubit gates, and "cx" for two-qubit.
+        gate_options (Dict[(int, str)]): Which single- and two-qubit gates to
+            use in the output QASM file. Defaults to "x" for single-qubit gates,
+            and "cx" for two-qubit.
 
     Returns:
         str: QASM output for the circuit.
+
     """
 
     qasm_str = "OPENQASM 2.0;\n"
@@ -186,13 +189,15 @@ def queko_circuit(graph, depth, density_vec, gate_options={1: "x", 2: "cx"}, lat
     Args:
         graph (nx.Graph): A hardware graph.
         depth (int): Target depth of the circuit.
-        density_vec (list[float]): A two-element array containing the desired densities
-            of single- and two-qubit gates.
-        gate_options (Dict[(int, str)]): Which single- and two-qubit gates to use in the
-            output QASM file. Defaults to "x" for single-qubit gates, and "cx" for two-qubit.
-        lattice_dim (int): Special parameter for when the nodes in the input graph are doubly
-            indexed due to, e.g., being constructed using nx.grid_graph. Represents the dimension
-            of the lattice, so lattice_dim=7 means a 7x7 lattice of qubits with nearest-neighbour
+        density_vec (list[float]): A two-element array containing the desired
+            densities of single- and two-qubit gates.
+        gate_options (Dict[(int, str)]): Which single- and two-qubit gates to
+            use in the output QASM file. Defaults to "x" for single-qubit gates,
+            and "cx" for two-qubit.
+        lattice_dim (int): Special parameter for when the nodes in the input
+            graph are doubly indexed due to, e.g., being constructed using
+            nx.grid_graph. Represents the dimension of the lattice, so
+            lattice_dim=7 means a 7x7 lattice of qubits with nearest-neighbour
             connections.
 
     Returns:
@@ -225,12 +230,35 @@ def queko_circuit(graph, depth, density_vec, gate_options={1: "x", 2: "cx"}, lat
     max_1q_gates = int(np.ceil(density_vec[0] * n_qubits * depth))
     max_2q_gates = int(np.ceil(density_vec[1] * n_qubits * depth / 2))
 
-    # Determine whether the provided depth and density produces an admissible circuit
-    # TODO: check the additional condition regarding maximal matchings
-    if any(
-        [max_1q_gates + max_2q_gates < depth, max_1q_gates + 2 * max_2q_gates > n_qubits * depth]
-    ):
-        raise ValueError("Input data inadmissible")
+    # Determine whether the provided depth and density produces an admissible
+    # circuit max_1q_gates + max_2q_gates cannot be less than circuit depth,
+    # otherwise not enough gates to produce something with depth T
+    if max_1q_gates + max_2q_gates < depth:
+        raise ValueError(
+            "Input data inadmissible. Insufficient gate densities "
+            f"to produce a circuit with depth {depth}.\n"
+            f"max_1q_gates = {max_1q_gates}, max_2q_gates = {max_2q_gates}"
+        )
+
+    # max_1q_gates + 2 * max_2q_gates cannot be greater than number of qubits *
+    # depth; that would be too many gates to fit in that depth on the device
+    if max_1q_gates + 2 * max_2q_gates > n_qubits * depth:
+        raise ValueError(
+            "Input data inadmissible. Desired gate densities are too large "
+            f"to produce a circuit with depth {depth}.\n"
+            f"max_1q_gates = {max_1q_gates}, max_2q_gates = {max_2q_gates}"
+        )
+
+    # Number of two-qubit gates cannot be larger than the depth * size of the
+    # maximal matching (otherwise, there are not enough disjoint edges to fit
+    # all the two-qubit gates in the desired number of time steps)
+    max_match_size = len(nx.maximal_matching(graph))
+    if max_2q_gates > max_match_size * depth:
+        raise ValueError(
+            "Input data inadmissible. Number of 2-qubit gates determined"
+            f"from density vector is too large to fit within depth {depth}.\n"
+            f"max_2q_gates = {max_2q_gates}, max. matching size {max_match_size}"
+        )
 
     # Generate a permutation of the graph vertices; this is the solution to the
     # allocation problem.

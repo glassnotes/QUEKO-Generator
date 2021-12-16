@@ -14,9 +14,17 @@
 
 import pytest
 
+import networkx as nx
+
 from itertools import chain
 
-from queko import _backbone_construction, _sprinkling_phase, _scrambling_phase, _generate_qasm
+from queko import (
+    _backbone_construction,
+    _sprinkling_phase,
+    _scrambling_phase,
+    _generate_qasm,
+    queko_circuit,
+)
 
 # Hard-coded edge lists for 3x3 and 4x4 lattices
 edges_3 = [
@@ -60,6 +68,29 @@ edges_4 = [
     (13, 14),
     (14, 15),
 ]
+
+
+def test_invalid_specs():
+    """Test that construction fails when the density vector and specified
+    depth would yield a circuit that doesn't fit the hardware graph."""
+
+    G = nx.grid_graph((3, 3))
+
+    # [0.05, 0.05], depth 20 -> 9 1-qubit gates, 5 2-qubit gates; too small
+    # to fit within depth 20
+    with pytest.raises(ValueError, match="Insufficient gate densities"):
+        queko_circuit(G, 20, [0.05, 0.05], lattice_dim=3)
+
+    # [0.9, 0.9], depth 5 -> 41 1-qubit gates, 21 2-qubit gates; too large
+    # to fit within depth 5
+    with pytest.raises(ValueError, match="gate densities are too large"):
+        queko_circuit(G, 20, [0.9, 0.9], lattice_dim=3)
+
+    # [0.05, 0.9], depth 20 -> 81 2-qubit gates; divide 81 over max. 4
+    # 2-qubit gates per layer of depth since size of maximal matching is 4,
+    # can see that this would be invalid.
+    with pytest.raises(ValueError, match="max. matching size"):
+        queko_circuit(G, 20, [0.05, 0.9], lattice_dim=3)
 
 
 @pytest.mark.parametrize(
@@ -173,5 +204,5 @@ def test_generate_qasm():
     gate_list_mini = [(0, (6,)), (1, (3, 7))]
 
     result = _generate_qasm(gate_list_mini, 9, {1: "h", 2: "cx"})
-    expected = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[9];\nh q[6];\ncx q[3] q[7];\n'
+    expected = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[9];\nh q[6];\ncx q[3], q[7];\n'
     assert result == expected
